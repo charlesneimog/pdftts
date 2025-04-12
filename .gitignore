@@ -1,1 +1,4 @@
 pdftts/__pycache__
+build/lib/pdftts
+dist
+pdftts.egg-info
