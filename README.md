@@ -1,4 +1,4 @@
-# PDF Stream TTS
+# pdftts - Read PDFs with real IAs voices for free
 
 A Python application that converts PDF text to speech with seamless page streaming and natural phrase segmentation.
 
