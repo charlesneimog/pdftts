@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pdftts"
-version = "0.0.1"
+version = "0.0.2"
 description = "Read PDF files using the edge TTS AI engine."
 authors = [
     {name = "Charles K. Neimog", email = "charlesneimog@outlook.com"}

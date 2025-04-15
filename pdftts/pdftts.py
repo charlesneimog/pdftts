@@ -1,3 +1,4 @@
+import os
 import tkinter as tk
 from tkinter import ttk, filedialog
 from queue import Queue, Empty
@@ -15,7 +16,8 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
+import asyncio
 
 # Configuration constants
 LANG_TO_MODEL = {
@@ -24,16 +26,18 @@ LANG_TO_MODEL = {
     "es": "es_core_news_sm",
     "fr": "fr_core_news_sm",
 }
-TEMP_DIR = Path(tempfile.gettempdir()) / "pytts"
-CONFIG_PATH = Path.home() / ".config" / "pytts"
+TEMP_DIR = Path(tempfile.gettempdir()) / "pdftts"
+CONFIG_PATH = Path.home() / ".config" / "pdftts"
 STATE_FILE = CONFIG_PATH / "state.json"
 MAX_RETRIES = 3
-TTS_RATE = "+15%"
 PRELOAD_NEXT = 2
+
+TTS_RATE = "+35%"
+TTS_VOICE = "en-US-AvaMultilingualNeural"
 
 
 class PDFTTS:
-    def __init__(self):
+    def __init__(self, usetkui=True):
         self.root = tk.Tk(className="charlesneimog.pdftts")
         self.root.title("PDF Stream TTS")
         self.root.geometry("300x256")
@@ -55,16 +59,24 @@ class PDFTTS:
         self.processing_thread: Optional[threading.Thread] = None
         self.preload_thread: Optional[threading.Thread] = None
 
-        # UI setup
-        self.setup_ui()
-        self.bind_events()
+        # voices
+        asyncio.run(self.get_voices())  # ou agende com `create_task` se estiver em loop
+        self.tts_rate = TTS_RATE
+        self.tts_voice = TTS_VOICE
 
         # Initialize directories and state
         TEMP_DIR.mkdir(exist_ok=True, parents=True)
         CONFIG_PATH.mkdir(exist_ok=True, parents=True)
         self.page_state = self.load_page_state()
 
+        # UI setup
+        if usetkui:
+            self.setup_ui()
+            self.bind_events()
+
+
         self.root.mainloop()
+
 
     def setup_ui(self):
         """Initialize all UI components"""
@@ -90,7 +102,7 @@ class PDFTTS:
 
         # Config Button
         self.cfg_btn = tk.Button(
-            control_frame, text="⚙️", width=3, command=self.toggle_play
+            control_frame, text="⚙️", width=3, command=self.config_window
         )
         self.cfg_btn.pack(side=tk.LEFT, padx=2)
 
@@ -122,6 +134,16 @@ class PDFTTS:
         )
         self.next_phrase_btn.pack(side=tk.LEFT, padx=1)
 
+        # Page entry and Go button
+        self.page_entry = tk.Entry(nav_frame, width=4)
+        self.page_entry.pack(side=tk.LEFT, padx=2)
+
+        self.go_page_btn = tk.Button(
+            nav_frame, text="Ir", width=3, command=self.go_to_page
+        )
+        self.go_page_btn.pack(side=tk.LEFT, padx=2)
+
+
         self.page_label = tk.Label(nav_frame, text="Pg 0/0")
         self.page_label.pack(side=tk.RIGHT, padx=3)
 
@@ -138,7 +160,15 @@ class PDFTTS:
         )
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
+        try:
+            self.root.tk.call('tk_getOpenFile', '-foobarbaz')
+        except:
+            pass
+        self.root.tk.call('set', '::tk::dialog::file::showHiddenBtn', '1')
+        self.root.tk.call('set', '::tk::dialog::file::showHiddenVar', '0')
+
         self.update_navigation_buttons()
+        self.update_ui()
 
     def bind_events(self):
         """Set up keyboard bindings"""
@@ -165,18 +195,20 @@ class PDFTTS:
     # Core functionality methods
     def open_pdf(self):
         """Handle PDF file selection"""
-        path = filedialog.askopenfilename(filetypes=[("PDF Files", "*.pdf")])
+        home = os.path.expanduser("~")
+        path = filedialog.askopenfilename(filetypes=[("PDF Files", "*.pdf")], initialdir=home)
         if not path:
             return
+        self.pdf_path = Path(path)
+        state = self.page_state.get(path, {})
+        self.current_page = state.get("page", 0)
 
+        # self.save_page_state()
         self.pdf_path = Path(path)
         with pdfplumber.open(self.pdf_path) as pdf:
             self.pages_len = len(pdf.pages)
 
-        self.current_page = min(
-            max(0, self.page_state.get(str(self.pdf_path), 0)), self.pages_len - 1
-        )
-        self.save_page_state()
+
         self.update_ui()
         self.start_processing()
 
@@ -261,6 +293,44 @@ class PDFTTS:
         self.text_display.insert(tk.END, text)
         self.text_display.see(tk.END)  # Auto-scroll to show the phrase
 
+    # config 
+    async def get_voices(self):
+        """Obtém e armazena as vozes disponíveis."""
+        voices = await edge_tts.voices.list_voices()
+        self.voices = sorted(voices, key=lambda v: v["ShortName"])
+
+
+    def config_window(self):
+        """Abre a janela de configurações"""
+        config_win = tk.Toplevel(self.root)
+        config_win.title("Configurações")
+        config_win.geometry("300x250")
+        config_win.transient(self.root)
+        config_win.grab_set()
+
+        # Velocidade da fala
+        tk.Label(config_win, text="Velocidade da Fala (TTS Rate):").pack(pady=5)
+        rate_var = tk.StringVar(value=self.tts_rate)
+        rate_entry = tk.Entry(config_win, textvariable=rate_var)
+        rate_entry.pack()
+
+        # Seleção de voz
+        tk.Label(config_win, text="Voz (TTS Voice):").pack(pady=5)
+        voice_names = [v["ShortName"] for v in getattr(self, 'voices', [])]
+        voice_var = tk.StringVar(value=self.tts_voice if 'TTS_VOICE' in globals() else voice_names[0] if voice_names else "")
+        voice_menu = tk.OptionMenu(config_win, voice_var, *voice_names)
+        voice_menu.pack()
+
+        def save_config():
+            self.tts_rate = rate_var.get()
+            self.tts_voice = voice_var.get()
+            self.update_status(f"Configurações salvas: Rate={self.tts_rate}, Voice={self.tts_voice}")
+            config_win.destroy()
+
+        tk.Button(config_win, text="Salvar", command=save_config).pack(pady=10)
+        tk.Button(config_win, text="Cancelar", command=config_win.destroy).pack()
+
+
     # Navigation methods
     def prev_phrase(self):
         """Navigate to previous phrase"""
@@ -302,6 +372,25 @@ class PDFTTS:
             self.start_processing()
             self.playing = was_playing
 
+    def go_to_page(self):
+        was_playing = self.playing
+        try:
+            page_num = int(self.page_entry.get()) - 1  
+            if 0 <= page_num < self.pages_len:
+                self.stop_processing()
+                self.stop_playback()  # Ensure playback is stopped and flag reset
+                self.current_page = page_num
+                self.current_phrase = 0
+                self.save_page_state()
+                self.update_ui()
+                self.start_processing()
+                self.playing = was_playing
+            else:
+                print("Número de página fora do intervalo.")
+        except ValueError:
+            print("Entrada inválida para número de página.")
+
+
     # Audio processing methods
     def generate_audio(self, phrase: str, lang: str, audio_path: Path):
         """Generate audio file for phrase"""
@@ -309,7 +398,7 @@ class PDFTTS:
 
         for attempt in range(MAX_RETRIES):
             try:
-                communicate = edge_tts.Communicate(phrase, voice, rate=TTS_RATE)
+                communicate = edge_tts.Communicate(phrase, voice, rate=self.tts_rate)
                 audio_data = b"".join(
                     [
                         chunk["data"]
@@ -356,12 +445,14 @@ class PDFTTS:
 
                 if self.playing:
                     self.current_phrase += 1
+                    self.save_page_state()
 
             except Exception as e:
                 self.update_status(f"Playback error: {str(e)}")
                 break
 
         if self.playing:
+            self.save_page_state()
             self.next_page()
 
     def preload_page_phrases(self, page_number):
@@ -441,21 +532,7 @@ class PDFTTS:
 
     def select_voice(self, lang: str) -> str:
         """Select appropriate TTS voice"""
-        voice_map = {
-            "en": "en-US-AvaMultilingualNeural",
-            "pt": "pt-BR-AntonioNeural",
-            "es": "es-ES-AlvaroNeural",
-            "fr": "fr-FR-DeniseNeural",
-            "de": "de-DE-KillianNeural",
-            "it": "it-IT-DiegoNeural",
-            "ja": "ja-JP-KeitaNeural",
-            "zh": "zh-CN-YunxiNeural",
-            "ru": "ru-RU-DmitryNeural",
-            "ar": "ar-SA-HamedNeural",
-            "hi": "hi-IN-MadhurNeural",
-            "ko": "ko-KR-InJoonNeural",
-        }
-        return voice_map.get(lang.split("-")[0], "en-US-AvaMultilingualNeural")
+        return self.tts_voice
 
     def stop_processing(self):
         """Stop background processing"""
@@ -486,12 +563,7 @@ class PDFTTS:
         self.root.destroy()
         sys.exit(0)
 
-    def load_page_state(self) -> Dict[str, int]:
-        """Load saved page positions"""
-        try:
-            return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
-        except Exception:
-            return {}
+
 
     def stop_playback(self):
         """Stop audio playback and reset state"""
@@ -506,11 +578,33 @@ class PDFTTS:
             self.display_phrase(phrase["text"])
         self.update_navigation_buttons()
 
+
     def save_page_state(self):
-        """Save current page position"""
+        """Save current page position and TTS config"""
         if self.pdf_path:
-            self.page_state[str(self.pdf_path)] = self.current_page
-            STATE_FILE.write_text(json.dumps(self.page_state))
+            self.page_state[str(self.pdf_path)] = {
+                "page": self.current_page,
+                "tts_voice": self.tts_voice,
+                "tts_rate": self.tts_rate
+            }
+            STATE_FILE.write_text(json.dumps(self.page_state, indent=4))
+
+
+    def load_page_state(self) -> Dict[str, Dict[str, Union[int, str]]]:
+        """Load saved page positions and TTS config"""
+        try:
+            if STATE_FILE.exists():
+                data = json.loads(STATE_FILE.read_text())
+                pdf_data = data.get(str(self.pdf_path), {})
+                self.current_page = pdf_data.get("page", 0)
+                self.tts_voice = pdf_data.get("tts_voice", self.tts_voice)
+                self.tts_rate = pdf_data.get("tts_rate", self.tts_rate)
+                return data
+            else:
+                return {}
+        except Exception:
+            return {}
+
 
     def update_ui(self):
         """Update all UI elements"""
