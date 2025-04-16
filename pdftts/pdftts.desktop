@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=pdftts
+Exec=/home/neimog/.config/miniconda3.dir/bin/pdftts
+Icon=/home/neimog/.local/share/icons/pdftts.png
+Terminal=false
+Categories=Utility;

@@ -232,6 +232,9 @@ class PDFTTS:
     def process_page_streaming(self):
         """Process current page content"""
         try:
+            if self.pdf_path is None:
+                raise Exception("PDF not loaded")
+
             with pdfplumber.open(self.pdf_path) as pdf:
                 page = pdf.pages[self.current_page]
                 text = page.extract_text() or ""
