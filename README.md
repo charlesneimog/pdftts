@@ -1,8 +1,18 @@
-# `pdftts` - Read PDFs with real IAs voices for free
+<h2 align="center"><code>pdftts</code> - Read PDFs with real IAs voices from Microsoft Edge</h2>
+<p align="center">
+   <img src="pdftts/pdftts.png" width="10%">
+</p>
+
+<p align="center">
+    <a href="https://img.shields.io/pypi/pyversions/pd4web"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-green" alt="License"></a>
+</p>
+
+---
 
 A Python application that converts PDF text to speech with seamless page streaming and natural phrase segmentation.
 
 <img src="https://github.com/user-attachments/assets/885ef5c2-e611-4079-bcf9-5c450e7b3f59" width="80%" />
+
 
 ## Features
 
