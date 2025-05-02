@@ -28,7 +28,7 @@ A Python application that converts PDF text to speech with seamless page streami
 
 1. Install dependencies:
    ```bash
-   pip install git+https://github.com/yourusername/pdftts.git 
+   pip install git+https://github.com/charlesneimog/pdftts.git 
    ```
    
 ## Usage
